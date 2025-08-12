@@ -1,0 +1,5 @@
+Collecting psutil
+  Downloading psutil-7.0.0-cp36-abi3-macosx_11_0_arm64.whl.metadata (22 kB)
+Downloading psutil-7.0.0-cp36-abi3-macosx_11_0_arm64.whl (239 kB)
+Installing collected packages: psutil
+Successfully installed psutil-7.0.0

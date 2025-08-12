@@ -1,0 +1,20 @@
+# Core dependencies for the Intelligent AI Agent
+openai>=1.3.0
+requests>=2.31.0
+
+# Google APIs
+google-api-python-client>=2.100.0
+google-auth-httplib2>=0.1.1
+google-auth-oauthlib>=1.1.0
+
+# Social media APIs
+tweepy>=4.14.0
+
+# Optional dependencies for enhanced features
+structlog>=23.1.0
+prometheus-client>=0.17.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
