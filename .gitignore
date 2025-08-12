@@ -49,9 +49,6 @@ Thumbs.db
 *.tmp
 *.temp
 
-# Test files
-test_*.py
-*_test.py
 
 # Documentation builds
 docs/_build/
