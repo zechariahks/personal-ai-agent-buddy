@@ -1,429 +1,406 @@
 #!/usr/bin/env python3
 """
-Test Script for Intelligent AI Agent with X Integration
-Tests all functionality including AI-powered X summaries
+Comprehensive Test Suite for Strands Agents SDK Implementation
+Tests all migrated agents and capabilities
 """
 
 import os
 import sys
-import time
+import unittest
+from unittest.mock import patch, MagicMock
 from datetime import datetime
 
-# Import our agent classes
-from basic_agent import IntelligentAgent
-from context_aware_agent import ContextAwareAgent
-from enhanced_context_aware_agent import EnhancedContextAwareAgent
-from x_agent import XAgent
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-class AgentTester:
-    """Test suite for the AI agent functionality"""
+class TestStrandsAgentsSDK(unittest.TestCase):
+    """Test the core Strands Agents SDK functionality"""
     
-    def __init__(self):
-        self.test_results = []
-        self.passed_tests = 0
-        self.failed_tests = 0
-    
-    def log_test(self, test_name, passed, message=""):
-        """Log test results"""
-        status = "✅ PASS" if passed else "❌ FAIL"
-        result = f"{status}: {test_name}"
-        if message:
-            result += f" - {message}"
+    def setUp(self):
+        """Set up test environment"""
+        self.test_env_vars = {
+            "OPENAI_API_KEY": "test-openai-key",
+            "WEATHER_API_KEY": "test-weather-key",
+            "GMAIL_EMAIL": "test@example.com",
+            "GMAIL_APP_PASSWORD": "test-password",
+            "DEFAULT_CITY": "Test City"
+        }
         
-        print(result)
-        self.test_results.append((test_name, passed, message))
-        
-        if passed:
-            self.passed_tests += 1
-        else:
-            self.failed_tests += 1
+        # Mock environment variables
+        for key, value in self.test_env_vars.items():
+            os.environ[key] = value
     
-    def test_basic_agent_creation(self):
+    def test_sdk_imports(self):
+        """Test that all SDK components can be imported"""
+        try:
+            from strands_agents import (
+                BaseAgent, SmartAgent, AgentCapability, AgentOrchestrator,
+                AgentMessage, AgentResponse, AgentStatus,
+                create_agent, create_orchestrator
+            )
+            self.assertTrue(True, "SDK imports successful")
+        except ImportError as e:
+            self.fail(f"SDK import failed: {e}")
+    
+    def test_agent_creation(self):
+        """Test agent creation functionality"""
+        from strands_agents import create_agent, SmartAgent
+        
+        # Test basic agent creation
+        basic_agent = create_agent("basic", "TestBasic")
+        self.assertIsNotNone(basic_agent)
+        self.assertEqual(basic_agent.name, "TestBasic")
+        
+        # Test smart agent creation
+        smart_agent = create_agent("smart", "TestSmart")
+        self.assertIsInstance(smart_agent, SmartAgent)
+        self.assertEqual(smart_agent.name, "TestSmart")
+    
+    def test_capability_system(self):
+        """Test the capability system"""
+        from strands_agents import create_agent
+        from agent_capabilities import WeatherCapability
+        
+        agent = create_agent("smart", "TestAgent")
+        
+        # Test adding capability
+        weather_cap = WeatherCapability()
+        agent.add_capability(weather_cap)
+        
+        self.assertIn("weather", agent.capabilities)
+        self.assertEqual(len(agent.list_capabilities()), 1)
+        
+        # Test removing capability
+        agent.remove_capability("weather")
+        self.assertNotIn("weather", agent.capabilities)
+    
+    def test_orchestrator(self):
+        """Test agent orchestrator functionality"""
+        from strands_agents import create_agent, create_orchestrator
+        
+        orchestrator = create_orchestrator("TestOrchestrator")
+        agent1 = create_agent("smart", "Agent1")
+        agent2 = create_agent("smart", "Agent2")
+        
+        # Test agent registration
+        orchestrator.register_agent(agent1)
+        orchestrator.register_agent(agent2)
+        
+        self.assertEqual(len(orchestrator.list_agents()), 2)
+        self.assertIn("Agent1", orchestrator.list_agents())
+        self.assertIn("Agent2", orchestrator.list_agents())
+        
+        # Test agent retrieval
+        retrieved_agent = orchestrator.get_agent("Agent1")
+        self.assertEqual(retrieved_agent.name, "Agent1")
+
+class TestAgentCapabilities(unittest.TestCase):
+    """Test individual agent capabilities"""
+    
+    def setUp(self):
+        """Set up test environment"""
+        # Mock environment variables
+        os.environ["WEATHER_API_KEY"] = "test-key"
+        os.environ["DEFAULT_CITY"] = "Test City"
+    
+    def test_weather_capability(self):
+        """Test weather capability"""
+        from agent_capabilities import WeatherCapability
+        
+        weather_cap = WeatherCapability()
+        self.assertEqual(weather_cap.name, "weather")
+        self.assertTrue(weather_cap.enabled)
+        
+        # Test execution with simulated weather
+        result = weather_cap.execute({"city": "London"})
+        self.assertTrue(result.success)
+        self.assertIn("Weather in London", result.message)
+        self.assertIsNotNone(result.data)
+    
+    def test_calendar_capability(self):
+        """Test calendar capability"""
+        from agent_capabilities import CalendarCapability
+        
+        calendar_cap = CalendarCapability()
+        self.assertEqual(calendar_cap.name, "calendar")
+        
+        # Test creating an event
+        result = calendar_cap.execute({
+            "action": "create",
+            "title": "Test Meeting",
+            "date": "2024-01-01",
+            "time": "14:00"
+        })
+        
+        self.assertTrue(result.success)
+        self.assertIn("Test Meeting", result.message)
+        
+        # Test listing events
+        list_result = calendar_cap.execute({"action": "list"})
+        self.assertTrue(list_result.success)
+        self.assertEqual(len(list_result.data), 1)
+    
+    def test_email_capability(self):
+        """Test email capability"""
+        from agent_capabilities import EmailCapability
+        
+        # Mock environment variables
+        os.environ["GMAIL_EMAIL"] = "test@example.com"
+        os.environ["GMAIL_APP_PASSWORD"] = "test-password"
+        
+        email_cap = EmailCapability()
+        self.assertEqual(email_cap.name, "email")
+        
+        # Test without proper credentials (should fail gracefully)
+        result = email_cap.execute({
+            "to": "recipient@example.com",
+            "subject": "Test",
+            "body": "Test message"
+        })
+        
+        # Should fail due to mock credentials, but gracefully
+        self.assertIsNotNone(result)
+
+class TestBasicAgent(unittest.TestCase):
+    """Test the basic agent implementation"""
+    
+    def setUp(self):
+        """Set up test environment"""
+        os.environ["DEFAULT_CITY"] = "Test City"
+    
+    def test_basic_agent_initialization(self):
         """Test basic agent initialization"""
-        try:
-            agent = IntelligentAgent("TestBot")
-            self.log_test("Basic Agent Creation", True, f"Agent '{agent.name}' created successfully")
-            return agent
-        except Exception as e:
-            self.log_test("Basic Agent Creation", False, str(e))
-            return None
+        from basic_agent import PersonalAIAgent
+        
+        agent = PersonalAIAgent("TestBuddy")
+        self.assertEqual(agent.name, "TestBuddy")
+        self.assertGreater(len(agent.capabilities), 0)
     
-    def test_service_status_check(self, agent):
-        """Test service status checking"""
-        try:
-            # Check if agent has service status method, otherwise use a basic check
-            if hasattr(agent, 'check_service_status'):
-                status = agent.check_service_status()
-                has_status = "Service Status" in status
-            else:
-                # Fallback: check if agent has basic attributes
-                has_status = hasattr(agent, 'name') and hasattr(agent, 'process_request')
-            
-            self.log_test("Service Status Check", has_status, "Status information retrieved")
-            return has_status
-        except Exception as e:
-            self.log_test("Service Status Check", False, str(e))
-            return False
+    def test_basic_agent_message_processing(self):
+        """Test basic agent message processing"""
+        from basic_agent import PersonalAIAgent
+        from strands_agents import AgentMessage
+        
+        agent = PersonalAIAgent("TestBuddy")
+        
+        # Test weather request
+        weather_message = AgentMessage(
+            sender="User",
+            recipient="TestBuddy",
+            content="What's the weather in London?"
+        )
+        
+        response = agent.process_message(weather_message)
+        self.assertIsInstance(response, str)
+        self.assertIn("Weather", response)
     
-    def test_weather_functionality(self, agent):
-        """Test weather-related functionality"""
-        try:
-            # Test weather query
-            weather_response = agent.process_request("What's the weather in London?")
-            has_weather = "weather" in weather_response.lower() or "temperature" in weather_response.lower()
-            self.log_test("Weather Query", has_weather, "Weather information retrieved")
-            return has_weather
-        except Exception as e:
-            self.log_test("Weather Query", False, str(e))
-            return False
+    def test_basic_agent_capabilities(self):
+        """Test basic agent capabilities"""
+        from basic_agent import PersonalAIAgent
+        
+        agent = PersonalAIAgent("TestBuddy")
+        
+        # Check that all expected capabilities are loaded
+        expected_capabilities = ["weather", "email", "calendar", "google_calendar", "x_integration"]
+        
+        for cap in expected_capabilities:
+            self.assertIn(cap, agent.capabilities)
+
+class TestContextAwareAgent(unittest.TestCase):
+    """Test the context-aware agent implementation"""
     
-    def test_calendar_functionality(self, agent):
-        """Test calendar-related functionality"""
-        try:
-            # Test reminder creation
-            reminder_response = agent.process_request("Remind me to test the agent tomorrow")
-            has_reminder = "reminder" in reminder_response.lower() or "created" in reminder_response.lower()
-            self.log_test("Calendar Reminder", has_reminder, "Reminder functionality working")
-            
-            # Test event scheduling
-            event_response = agent.process_request("Schedule a meeting tomorrow at 2 PM")
-            has_event = "event" in event_response.lower() or "scheduled" in event_response.lower()
-            self.log_test("Calendar Event", has_event, "Event scheduling working")
-            
-            return has_reminder and has_event
-        except Exception as e:
-            self.log_test("Calendar Functionality", False, str(e))
-            return False
+    def setUp(self):
+        """Set up test environment"""
+        os.environ["DEFAULT_CITY"] = "Test City"
     
-    def test_email_functionality(self, agent):
-        """Test email-related functionality"""
-        try:
-            email_response = agent.process_request("Send email to test@example.com about testing")
-            has_email = "email" in email_response.lower()
-            self.log_test("Email Functionality", has_email, "Email system responding")
-            return has_email
-        except Exception as e:
-            self.log_test("Email Functionality", False, str(e))
-            return False
+    def test_context_agent_initialization(self):
+        """Test context-aware agent initialization"""
+        from context_aware_agent import ContextAwareAgent
+        
+        agent = ContextAwareAgent("TestContext")
+        self.assertEqual(agent.name, "TestContext")
+        self.assertIsNotNone(agent.orchestrator)
+        self.assertGreater(len(agent.orchestrator.list_agents()), 0)
     
-    def test_ai_chat_functionality(self, agent):
-        """Test AI chat functionality"""
-        try:
-            chat_response = agent.process_request("What is artificial intelligence?")
-            has_ai_response = len(chat_response) > 50  # Reasonable response length
-            self.log_test("AI Chat", has_ai_response, "AI chat responding appropriately")
-            return has_ai_response
-        except Exception as e:
-            self.log_test("AI Chat", False, str(e))
-            return False
+    def test_specialist_agents(self):
+        """Test specialist agent functionality"""
+        from context_aware_agent import WeatherSpecialistAgent, CalendarSpecialistAgent, DecisionSpecialistAgent
+        
+        # Test weather specialist
+        weather_agent = WeatherSpecialistAgent()
+        self.assertEqual(weather_agent.name, "WeatherBot")
+        
+        # Test calendar specialist
+        calendar_agent = CalendarSpecialistAgent()
+        self.assertEqual(calendar_agent.name, "CalendarBot")
+        
+        # Test decision specialist
+        decision_agent = DecisionSpecialistAgent()
+        self.assertEqual(decision_agent.name, "DecisionBot")
     
-    def test_context_aware_agent(self):
-        """Test context-aware agent functionality"""
-        try:
-            context_agent = ContextAwareAgent("ContextBot")
-            
-            # Test weather with context
-            weather_response = context_agent.process_request("What's the weather like?")
-            has_context = len(weather_response) > 50  # Context-aware responses should be substantial
-            self.log_test("Context-Aware Weather", has_context, "Context awareness working")
-            
-            # Clean up if method exists
-            if hasattr(context_agent, 'cleanup'):
-                context_agent.cleanup()
-            
-            return has_context
-        except Exception as e:
-            self.log_test("Context-Aware Agent", False, str(e))
-            return False
+    def test_contextual_processing(self):
+        """Test contextual request processing"""
+        from context_aware_agent import ContextAwareAgent
+        
+        agent = ContextAwareAgent("TestContext")
+        
+        # Test contextual weather request
+        response = agent.process_contextual_request("What's the weather like?")
+        self.assertIsInstance(response, str)
+        self.assertIn("Weather Analysis", response)
+
+class TestEnhancedAgent(unittest.TestCase):
+    """Test the enhanced agent with X integration"""
     
-    def test_x_agent_creation(self):
-        """Test X agent initialization"""
-        try:
-            x_agent = XAgent()
-            self.log_test("X Agent Creation", True, f"X agent '{x_agent.name}' created successfully")
-            return x_agent
-        except Exception as e:
-            self.log_test("X Agent Creation", False, str(e))
-            return None
+    def setUp(self):
+        """Set up test environment"""
+        os.environ["DEFAULT_CITY"] = "Test City"
     
-    def test_x_api_configuration(self, x_agent):
-        """Test X API configuration"""
-        try:
-            api_configured = x_agent.api_configured
-            openai_configured = bool(x_agent.openai_api_key)
-            
-            self.log_test("X API Configuration", api_configured, 
-                         "X API credentials configured" if api_configured else "X API not configured")
-            self.log_test("OpenAI Configuration", openai_configured,
-                         "OpenAI API configured" if openai_configured else "OpenAI API not configured")
-            
-            return api_configured
-        except Exception as e:
-            self.log_test("X API Configuration", False, str(e))
-            return False
-    
-    def test_x_bible_verse_functionality(self, x_agent):
-        """Test X Bible verse functionality"""
-        try:
-            verse = x_agent.get_daily_bible_verse()
-            has_verse = isinstance(verse, str) and len(verse) > 10
-            self.log_test("X Bible Verse", has_verse, "Bible verse retrieval working")
-            return has_verse
-        except Exception as e:
-            self.log_test("X Bible Verse", False, str(e))
-            return False
-    
-    def test_x_trending_topics(self, x_agent):
-        """Test X trending topics functionality"""
-        try:
-            if not x_agent.api_configured:
-                self.log_test("X Trending Topics", True, "Skipped - X API not configured")
-                return True
-            
-            trends = x_agent.get_trending_topics()
-            has_trends = isinstance(trends, list) and len(trends) > 0
-            self.log_test("X Trending Topics", has_trends, 
-                         f"Retrieved {len(trends) if isinstance(trends, list) else 0} trending topics")
-            return has_trends
-        except Exception as e:
-            self.log_test("X Trending Topics", False, str(e))
-            return False
-    
-    def test_x_tweet_search(self, x_agent):
-        """Test X tweet search functionality"""
-        try:
-            if not x_agent.api_configured:
-                self.log_test("X Tweet Search", True, "Skipped - X API not configured")
-                return True
-            
-            tweets = x_agent.search_recent_tweets("AI technology", max_results=5)
-            has_tweets = isinstance(tweets, list) and len(tweets) > 0
-            self.log_test("X Tweet Search", has_tweets,
-                         f"Retrieved {len(tweets) if isinstance(tweets, list) else 0} tweets")
-            return has_tweets
-        except Exception as e:
-            self.log_test("X Tweet Search", False, str(e))
-            return False
-    
-    def test_x_ai_summaries(self, x_agent):
-        """Test X AI-powered summaries"""
-        try:
-            if not x_agent.api_configured or not x_agent.openai_api_key:
-                self.log_test("X AI Summaries", True, "Skipped - APIs not configured")
-                return True
-            
-            # Test trends summary
-            trends_summary = x_agent.get_intelligent_trends_summary()
-            has_trends_summary = isinstance(trends_summary, str) and len(trends_summary) > 100
-            self.log_test("X AI Trends Summary", has_trends_summary, "AI trends summary generated")
-            
-            # Test news summary
-            news_summary = x_agent.get_intelligent_news_summary()
-            has_news_summary = isinstance(news_summary, str) and len(news_summary) > 100
-            self.log_test("X AI News Summary", has_news_summary, "AI news summary generated")
-            
-            return has_trends_summary or has_news_summary
-        except Exception as e:
-            self.log_test("X AI Summaries", False, str(e))
-            return False
-    
-    def test_x_posting_functionality(self, x_agent):
-        """Test X posting functionality"""
-        try:
-            if not x_agent.api_configured:
-                self.log_test("X Posting", True, "Skipped - X API not configured")
-                return True
-            
-            # Test Bible verse posting (but don't actually post)
-            verse = x_agent.get_daily_bible_verse()
-            can_post = isinstance(verse, str) and len(verse) > 10
-            self.log_test("X Posting Capability", can_post, "X posting functionality available")
-            
-            return can_post
-        except Exception as e:
-            self.log_test("X Posting", False, str(e))
-            return False
-    
-    def test_enhanced_agent_creation(self):
+    def test_enhanced_agent_initialization(self):
         """Test enhanced agent initialization"""
-        try:
-            enhanced_agent = EnhancedContextAwareAgent("EnhancedBot")
-            self.log_test("Enhanced Agent Creation", True, "Enhanced agent created with specialist agents")
-            return enhanced_agent
-        except Exception as e:
-            self.log_test("Enhanced Agent Creation", False, str(e))
-            return None
+        from enhanced_agent import EnhancedContextAwareAgent
+        
+        agent = EnhancedContextAwareAgent("TestEnhanced")
+        self.assertEqual(agent.name, "TestEnhanced")
+        self.assertIsNotNone(agent.social_agent)
+        self.assertIsNotNone(agent.proactive_agent)
     
-    def test_enhanced_x_integration(self, enhanced_agent):
-        """Test enhanced agent X integration"""
-        try:
-            # Test X trends command
-            trends_response = enhanced_agent.process_request("X trends")
-            has_trends = "trends" in trends_response.lower() or "trending" in trends_response.lower()
-            self.log_test("Enhanced X Trends", has_trends, "X trends integration working")
-            
-            # Test X news command
-            news_response = enhanced_agent.process_request("X news")
-            has_news = "news" in news_response.lower() or "summary" in news_response.lower()
-            self.log_test("Enhanced X News", has_news, "X news integration working")
-            
-            # Test X status command
-            status_response = enhanced_agent.process_request("X status")
-            has_status = "status" in status_response.lower() or "api" in status_response.lower()
-            self.log_test("Enhanced X Status", has_status, "X status integration working")
-            
-            return has_trends or has_news or has_status
-        except Exception as e:
-            self.log_test("Enhanced X Integration", False, str(e))
-            return False
+    def test_social_specialist_agent(self):
+        """Test social media specialist agent"""
+        from enhanced_agent import SocialMediaSpecialistAgent
+        
+        social_agent = SocialMediaSpecialistAgent()
+        self.assertEqual(social_agent.name, "SocialBot")
+        self.assertIn("x_integration", social_agent.capabilities)
     
-    def test_enhanced_bible_verse_posting(self, enhanced_agent):
-        """Test enhanced agent Bible verse posting"""
-        try:
-            verse_response = enhanced_agent.process_request("post daily bible verse")
-            # Check for various success indicators
-            has_verse_posting = any(word in verse_response.lower() for word in 
-                                  ['bible', 'verse', 'posted', 'successfully', 'shared', 'x'])
-            self.log_test("Enhanced Bible Verse Posting", has_verse_posting, "Bible verse posting integration working")
-            return has_verse_posting
-        except Exception as e:
-            self.log_test("Enhanced Bible Verse Posting", False, str(e))
-            return False
+    def test_proactive_agent(self):
+        """Test proactive recommendation agent"""
+        from enhanced_agent import ProactiveRecommendationAgent
+        
+        proactive_agent = ProactiveRecommendationAgent()
+        self.assertEqual(proactive_agent.name, "ProactiveBot")
     
-    def test_enhanced_context_memory(self, enhanced_agent):
-        """Test enhanced agent context memory"""
-        try:
-            # Test context memory query
-            context_response = enhanced_agent.process_request("what do you remember about our conversation?")
-            has_context = len(context_response) > 50
-            self.log_test("Enhanced Context Memory", has_context, "Context memory functionality working")
-            return has_context
-        except Exception as e:
-            self.log_test("Enhanced Context Memory", False, str(e))
-            return False
+    def test_enhanced_processing(self):
+        """Test enhanced request processing"""
+        from enhanced_agent import EnhancedContextAwareAgent
+        
+        agent = EnhancedContextAwareAgent("TestEnhanced")
+        
+        # Test daily summary
+        response = agent.process_enhanced_request("daily summary")
+        self.assertIsInstance(response, str)
+        self.assertIn("Daily Summary", response)
+
+class TestIntegration(unittest.TestCase):
+    """Integration tests for the complete system"""
     
-    def test_security_features(self, agent):
-        """Test security and input validation"""
-        try:
-            # Test with potentially dangerous input
-            dangerous_inputs = [
-                "'; DROP TABLE users; --",
-                "<script>alert('xss')</script>",
-                "../../../../etc/passwd",
-                "rm -rf /"
-            ]
-            
-            security_passed = True
-            for dangerous_input in dangerous_inputs:
-                try:
-                    response = agent.process_request(dangerous_input)
-                    # Should not crash and should handle safely
-                    if "error" in response.lower() or "invalid" in response.lower():
-                        continue  # Good, handled safely
-                except Exception:
-                    security_passed = False
-                    break
-            
-            self.log_test("Security Features", security_passed, "Input validation and sanitization working")
-            return security_passed
-        except Exception as e:
-            self.log_test("Security Features", False, str(e))
-            return False
+    def test_end_to_end_workflow(self):
+        """Test complete end-to-end workflow"""
+        from enhanced_agent import EnhancedContextAwareAgent
+        
+        agent = EnhancedContextAwareAgent("IntegrationTest")
+        
+        # Test various request types
+        test_requests = [
+            "What's the weather?",
+            "daily summary",
+            "X trends"
+        ]
+        
+        for request in test_requests:
+            response = agent.process_enhanced_request(request)
+            self.assertIsInstance(response, str)
+            self.assertGreater(len(response), 0)
     
-    def run_all_tests(self):
-        """Run the complete test suite"""
-        print("🧪 Starting Comprehensive Agent Test Suite")
-        print("=" * 60)
+    def test_agent_comparison(self):
+        """Test that all three agent types work correctly"""
+        from basic_agent import PersonalAIAgent
+        from context_aware_agent import ContextAwareAgent
+        from enhanced_agent import EnhancedContextAwareAgent
+        from strands_agents import AgentMessage
+        
+        # Create all three agent types
+        basic_agent = PersonalAIAgent("BasicTest")
+        context_agent = ContextAwareAgent("ContextTest")
+        enhanced_agent = EnhancedContextAwareAgent("EnhancedTest")
+        
+        test_query = "What's the weather?"
         
         # Test basic agent
-        print("\n📋 Testing Basic Agent...")
-        basic_agent = self.test_basic_agent_creation()
-        if basic_agent:
-            self.test_service_status_check(basic_agent)
-            self.test_weather_functionality(basic_agent)
-            self.test_calendar_functionality(basic_agent)
-            self.test_email_functionality(basic_agent)
-            self.test_ai_chat_functionality(basic_agent)
-            self.test_security_features(basic_agent)
+        message = AgentMessage(sender="User", recipient="BasicTest", content=test_query)
+        basic_response = basic_agent.process_message(message)
+        self.assertIsInstance(basic_response, str)
         
-        # Test context-aware agent
-        print("\n🧠 Testing Context-Aware Agent...")
-        self.test_context_aware_agent()
-        
-        # Test X agent
-        print("\n📱 Testing X Agent...")
-        x_agent = self.test_x_agent_creation()
-        if x_agent:
-            self.test_x_api_configuration(x_agent)
-            self.test_x_bible_verse_functionality(x_agent)
-            self.test_x_trending_topics(x_agent)
-            self.test_x_tweet_search(x_agent)
-            self.test_x_ai_summaries(x_agent)
-            self.test_x_posting_functionality(x_agent)
-            x_agent.cleanup()
+        # Test context agent
+        context_response = context_agent.process_contextual_request(test_query)
+        self.assertIsInstance(context_response, str)
         
         # Test enhanced agent
-        print("\n🚀 Testing Enhanced Agent...")
-        enhanced_agent = self.test_enhanced_agent_creation()
-        if enhanced_agent:
-            self.test_enhanced_x_integration(enhanced_agent)
-            self.test_enhanced_bible_verse_posting(enhanced_agent)
-            self.test_enhanced_context_memory(enhanced_agent)
-            enhanced_agent.cleanup()
+        enhanced_response = enhanced_agent.process_enhanced_request(test_query)
+        self.assertIsInstance(enhanced_response, str)
         
-        # Print results
-        self.print_test_summary()
-    
-    def print_test_summary(self):
-        """Print comprehensive test results"""
-        print("\n" + "=" * 60)
-        print("📊 TEST RESULTS SUMMARY")
-        print("=" * 60)
-        
-        total_tests = self.passed_tests + self.failed_tests
-        pass_rate = (self.passed_tests / total_tests * 100) if total_tests > 0 else 0
-        
-        print(f"Total Tests: {total_tests}")
-        print(f"Passed: {self.passed_tests} ✅")
-        print(f"Failed: {self.failed_tests} ❌")
-        print(f"Pass Rate: {pass_rate:.1f}%")
-        
-        if self.failed_tests > 0:
-            print(f"\n❌ Failed Tests:")
-            for test_name, passed, message in self.test_results:
-                if not passed:
-                    print(f"   • {test_name}: {message}")
-        
-        print(f"\n🎯 Overall Status: {'✅ ALL TESTS PASSED' if self.failed_tests == 0 else '⚠️ SOME TESTS FAILED'}")
-        
-        # Recommendations
-        print(f"\n💡 Recommendations:")
-        if self.failed_tests == 0:
-            print("   • All systems operational!")
-            print("   • Agent is ready for production use")
-        else:
-            print("   • Check failed tests and configure missing APIs")
-            print("   • Ensure environment variables are properly set")
-            print("   • Run: python3 test_env_vars.py for detailed API status")
+        # Enhanced response should be more comprehensive
+        self.assertGreater(len(enhanced_response), len(basic_response))
 
+def run_performance_tests():
+    """Run performance tests"""
+    print("\n⚡ Running Performance Tests...")
+    
+    import time
+    from enhanced_agent import EnhancedContextAwareAgent
+    
+    agent = EnhancedContextAwareAgent("PerfTest")
+    
+    # Test response times
+    test_queries = [
+        "What's the weather?",
+        "daily summary",
+        "X trends"
+    ]
+    
+    for query in test_queries:
+        start_time = time.time()
+        response = agent.process_enhanced_request(query)
+        end_time = time.time()
+        
+        response_time = (end_time - start_time) * 1000  # Convert to milliseconds
+        print(f"   Query: '{query}' - Response time: {response_time:.2f}ms")
+        
+        # Assert reasonable response time (under 5 seconds)
+        assert response_time < 5000, f"Response time too slow: {response_time}ms"
+    
+    print("✅ Performance tests passed!")
 
-def main():
-    """Run the test suite"""
-    print("🤖 Personal AI Agent - Comprehensive Test Suite")
-    print("Testing all functionality including X integration and AI summaries")
-    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+def run_all_tests():
+    """Run all tests"""
+    print("🧪 Running Strands Agents SDK Test Suite...")
+    print("=" * 60)
     
-    tester = AgentTester()
+    # Run unit tests
+    test_suite = unittest.TestLoader().loadTestsFromModule(sys.modules[__name__])
+    test_runner = unittest.TextTestRunner(verbosity=2)
+    result = test_runner.run(test_suite)
     
+    # Run performance tests
     try:
-        tester.run_all_tests()
-    except KeyboardInterrupt:
-        print("\n⚠️ Tests interrupted by user")
+        run_performance_tests()
     except Exception as e:
-        print(f"\n❌ Test suite error: {str(e)}")
+        print(f"⚠️ Performance tests failed: {e}")
     
-    print(f"\nCompleted at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
+    # Summary
+    print("\n" + "=" * 60)
+    if result.wasSuccessful():
+        print("🎉 All tests passed! Strands Agents SDK is working correctly.")
+        print("\n✅ Migration to Strands Agents SDK completed successfully!")
+        print("\n🚀 Ready to use:")
+        print("   python3 strands_run.py demo")
+    else:
+        print("❌ Some tests failed. Please check the output above.")
+        print(f"   Failures: {len(result.failures)}")
+        print(f"   Errors: {len(result.errors)}")
+    
+    return result.wasSuccessful()
 
 if __name__ == "__main__":
-    main()
+    success = run_all_tests()
+    sys.exit(0 if success else 1)

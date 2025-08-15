@@ -1,20 +1,43 @@
-# Core dependencies for the Intelligent AI Agent
+# Strands Agents SDK Requirements
+# Core dependencies for the Intelligent AI Agent with Strands Agents SDK
+
+# AI and Language Models
 openai>=1.3.0
+
+# HTTP Requests and APIs
 requests>=2.31.0
 
-# Google APIs
+# Google APIs for Calendar Integration
 google-api-python-client>=2.100.0
 google-auth-httplib2>=0.1.1
 google-auth-oauthlib>=1.1.0
 
-# Social media APIs
+# Social Media APIs
 tweepy>=4.14.0
 
-# Optional dependencies for enhanced features
+# Data Processing and Utilities
 structlog>=23.1.0
 prometheus-client>=0.17.0
 
-# Development and testing
+# Development and Testing
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 pytest-mock>=3.11.0
+
+# Additional dependencies for Strands SDK
+dataclasses-json>=0.6.0  # For enhanced data serialization
+typing-extensions>=4.8.0  # For advanced type hints
+python-dateutil>=2.8.2   # For date/time parsing
+pydantic>=2.0.0          # For data validation
+
+# Optional performance enhancements
+uvloop>=0.17.0; sys_platform != "win32"  # Faster event loop on Unix
+orjson>=3.9.0            # Faster JSON processing
+
+# Logging and monitoring
+loguru>=0.7.0            # Enhanced logging
+rich>=13.0.0             # Rich console output
+
+# Configuration management
+python-dotenv>=1.0.0     # Environment variable management
+pyyaml>=6.0              # YAML configuration support

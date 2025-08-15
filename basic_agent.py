@@ -1,546 +1,284 @@
 #!/usr/bin/env python3
 """
-Basic Intelligent Agent Implementation
-Based on the complete agent building guide
+Basic Intelligent Agent Implementation using Strands Agents SDK
+Modern, modular framework for building intelligent agents
 """
 
-import openai
-import requests
 import os
-import smtplib
-import time
 import re
-from datetime import datetime
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from strands_agents import SmartAgent, create_agent
+from agent_capabilities import (
+    WeatherCapability, EmailCapability, CalendarCapability,
+    GoogleCalendarCapability, XCapability
+)
 
-class IntelligentAgent:
-    """
-    Basic intelligent AI agent with weather, email, calendar, and chat capabilities
-    """
+class PersonalAIAgent(SmartAgent):
+    """Personal AI Agent using Strands Agents SDK"""
     
     def __init__(self, name="Buddy"):
-        """Initialize the agent with basic configuration"""
-        self.name = name
-        self.memory = {}  # Store reminders, events, etc.
-        self.services_status = {}  # Track which services are working
+        super().__init__(
+            name=name,
+            description="Personal AI assistant that can help with weather, emails, calendar, and more"
+        )
         
-        print(f"🤖 Hello! I'm {self.name}, your intelligent AI assistant.")
-        print("I can help with weather, emails, calendar events, and answer questions!")
+        # Initialize and add capabilities
+        self._setup_capabilities()
         
-        # Check which services are available
+        print(f"🤖 Hello! I'm {self.name}, your intelligent AI assistant built with Strands Agents SDK.")
+        print("I can help with weather, emails, calendar events, X integration, and answer questions!")
+        
+        # Check service status
         self._check_services()
+    
+    def _setup_capabilities(self):
+        """Setup all agent capabilities"""
+        # Core capabilities
+        self.add_capability(WeatherCapability())
+        self.add_capability(EmailCapability())
+        self.add_capability(CalendarCapability())
+        self.add_capability(GoogleCalendarCapability())
+        self.add_capability(XCapability())
+        
+        print(f"✅ Loaded {len(self.capabilities)} capabilities")
     
     def _check_services(self):
         """Check which external services are properly configured"""
-        self.services_status = {
-            "AI": os.getenv("OPENAI_API_KEY") is not None,
-            "Weather": os.getenv("WEATHER_API_KEY") is not None,
-            "Email": os.getenv("GMAIL_EMAIL") is not None and os.getenv("GMAIL_APP_PASSWORD") is not None
+        services_status = {
+            "AI (OpenAI)": os.getenv("OPENAI_API_KEY") is not None,
+            "Weather API": os.getenv("WEATHER_API_KEY") is not None,
+            "Gmail": os.getenv("GMAIL_EMAIL") is not None and os.getenv("GMAIL_APP_PASSWORD") is not None,
+            "Google Calendar": os.path.exists("credentials.json") and os.path.exists("token.pickle"),
+            "X (Twitter)": all([
+                os.getenv("X_BEARER_TOKEN"),
+                os.getenv("X_API_KEY"),
+                os.getenv("X_API_SECRET"),
+                os.getenv("X_ACCESS_TOKEN"),
+                os.getenv("X_ACCESS_TOKEN_SECRET")
+            ])
         }
         
         print("\n🔧 Service Status:")
-        for service, available in self.services_status.items():
+        for service, available in services_status.items():
             status = "✅ Ready" if available else "❌ Not configured"
             print(f"   {service}: {status}")
         print()
     
-    def think(self, user_request):
-        """Use AI to understand and respond to requests"""
-        if not self.services_status.get("AI", False):
-            return "❌ AI service not configured. Please add OPENAI_API_KEY to your .env file."
+    def process_message(self, message):
+        """Process incoming messages and route to appropriate capabilities"""
+        content = message.content.lower()
         
-        try:
-            print(f"🤔 Thinking about: {user_request}")
-            
-            # Create OpenAI client
-            client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-            
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": """You are a helpful personal assistant. Provide clear, 
-                        friendly responses. If asked about weather, emails, or calendar events, 
-                        suggest using the specific commands available."""
-                    },
-                    {
-                        "role": "user", 
-                        "content": user_request
-                    }
-                ],
-                max_tokens=500,
-                temperature=0.7
-            )
-            
-            return response.choices[0].message.content
-            
-        except Exception as e:
-            return f"❌ AI thinking error: {str(e)}"
+        # Route to appropriate capability based on message content
+        if any(word in content for word in ["weather", "temperature", "rain", "sunny", "cloudy"]):
+            return self._handle_weather_request(message.content)
+        elif any(word in content for word in ["email", "send", "mail"]):
+            return self._handle_email_request(message.content)
+        elif any(word in content for word in ["calendar", "event", "schedule", "meeting", "appointment"]):
+            return self._handle_calendar_request(message.content)
+        elif any(word in content for word in ["reminder", "remind", "remember"]):
+            return self._handle_reminder_request(message.content)
+        elif any(word in content for word in ["x", "twitter", "tweet", "trends", "post"]):
+            return self._handle_x_request(message.content)
+        else:
+            # Use AI thinking for general queries
+            return self.think(message.content)
     
-    def check_weather_basic(self, city):
-        """Basic weather function with simulated data for testing"""
-        try:
-            weather_info = {
-                "city": city.title(),
-                "temperature": "22°C",
-                "condition": "Sunny",
-                "humidity": "45%",
-                "wind": "Light breeze"
-            }
-            
-            return f"""
-🌤️  Weather in {weather_info['city']}:
-• Temperature: {weather_info['temperature']}
-• Condition: {weather_info['condition']}
-• Humidity: {weather_info['humidity']}
-• Wind: {weather_info['wind']}
-            """.strip()
-            
-        except Exception as e:
-            return f"❌ Weather error: {str(e)}"
-    
-    def check_weather_real(self, city):
-        """Get real weather data from OpenWeatherMap API"""
-        if not self.services_status.get("Weather", False):
-            return "❌ Weather service not configured. Please add WEATHER_API_KEY to .env file."
+    def _handle_weather_request(self, request: str) -> str:
+        """Handle weather-related requests"""
+        # Extract city from request
+        city = self._extract_city(request)
         
-        try:
-            api_key = os.getenv("WEATHER_API_KEY")
-            url = "http://api.openweathermap.org/data/2.5/weather"
-            params = {"q": city, "appid": api_key, "units": "metric"}
-            
-            print(f"🌤️  Getting real weather for {city}...")
-            response = requests.get(url, params=params, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                temp = data["main"]["temp"]
-                feels_like = data["main"]["feels_like"]
-                humidity = data["main"]["humidity"]
-                description = data["weather"][0]["description"]
-                wind_speed = data["wind"]["speed"]
-                
-                weather_report = f"""
-🌤️  Real Weather in {city.title()}:
-• Temperature: {temp}°C (feels like {feels_like}°C)
-• Condition: {description.title()}
-• Humidity: {humidity}%
-• Wind Speed: {wind_speed} m/s
-
-{self._get_weather_advice(temp, description)}
-                """.strip()
-                
-                return weather_report
-                
-            elif response.status_code == 404:
-                return f"❌ Sorry, I couldn't find weather data for '{city}'. Please check the city name."
+        result = self.execute_capability("weather", {"city": city})
+        
+        if result.success:
+            return result.message
+        else:
+            return f"❌ {result.message}"
+    
+    def _handle_email_request(self, request: str) -> str:
+        """Handle email-related requests"""
+        # For demo purposes, we'll use a simple email format
+        # In a real implementation, you'd parse the request more thoroughly
+        
+        result = self.execute_capability("email", {
+            "to": "example@example.com",
+            "subject": "Message from AI Agent",
+            "body": "This is a test email from your AI agent."
+        })
+        
+        if result.success:
+            return result.message
+        else:
+            return f"❌ {result.message}"
+    
+    def _handle_calendar_request(self, request: str) -> str:
+        """Handle calendar-related requests"""
+        if "list" in request.lower() or "show" in request.lower():
+            # Try Google Calendar first, fallback to basic calendar
+            google_result = self.execute_capability("google_calendar", {"action": "list"})
+            if google_result.success:
+                return google_result.message
             else:
-                return f"❌ Weather service error: {response.status_code}"
-                
-        except requests.exceptions.Timeout:
-            return "❌ Weather service is taking too long to respond. Please try again."
-        except requests.exceptions.RequestException as e:
-            return f"❌ Network error: Could not connect to weather service. {str(e)}"
-        except Exception as e:
-            return f"❌ Unexpected weather error: {str(e)}"
+                basic_result = self.execute_capability("calendar", {"action": "list"})
+                return basic_result.message
+        
+        elif "create" in request.lower() or "schedule" in request.lower():
+            # Extract event details (simplified)
+            title = self._extract_event_title(request)
+            
+            # Try Google Calendar first
+            google_result = self.execute_capability("google_calendar", {
+                "action": "create",
+                "title": title
+            })
+            
+            if google_result.success:
+                return google_result.message
+            else:
+                # Fallback to basic calendar
+                basic_result = self.execute_capability("calendar", {
+                    "action": "create",
+                    "title": title
+                })
+                return basic_result.message
+        
+        else:
+            return "I can help you list events or create new ones. Try 'list my events' or 'schedule a meeting'."
     
-    def _get_weather_advice(self, temp, description):
-        """Provide helpful advice based on weather conditions"""
-        advice = ""
+    def _handle_reminder_request(self, request: str) -> str:
+        """Handle reminder requests"""
+        # Extract reminder text
+        reminder_text = self._extract_reminder_text(request)
         
-        if temp < 0:
-            advice = "🧥 It's freezing! Bundle up and stay warm."
-        elif temp < 10:
-            advice = "🧥 Pretty cold - you'll want a warm jacket."
-        elif temp > 30:
-            advice = "☀️ It's hot! Stay hydrated and seek shade."
+        result = self.execute_capability("calendar", {
+            "action": "reminder",
+            "text": reminder_text,
+            "when": "later"
+        })
         
-        if "rain" in description.lower():
-            advice += " ☔ Don't forget an umbrella!"
-        elif "snow" in description.lower():
-            advice += " ❄️ Watch out for slippery conditions!"
-        
-        return advice
+        return result.message
     
-    def create_reminder_basic(self, message, recipient="yourself"):
-        """Create and store reminders in memory"""
-        try:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            
-            reminder = {
-                "message": message,
-                "recipient": recipient,
-                "created": timestamp,
-                "id": f"reminder_{len(self.memory.get('reminders', []))}"
-            }
-            
-            if "reminders" not in self.memory:
-                self.memory["reminders"] = []
-            self.memory["reminders"].append(reminder)
-            
-            return f"📝 Reminder created: '{message}' for {recipient}"
-            
-        except Exception as e:
-            return f"❌ Reminder error: {str(e)}"
-    
-    def list_reminders(self):
-        """Show all stored reminders"""
-        if "reminders" not in self.memory or not self.memory["reminders"]:
-            return "📝 No reminders found."
+    def _handle_x_request(self, request: str) -> str:
+        """Handle X (Twitter) related requests"""
+        if "trends" in request.lower():
+            result = self.execute_capability("x_integration", {"action": "trends"})
+            return result.message
         
-        reminder_list = "📝 Your reminders:\n"
-        for i, reminder in enumerate(self.memory["reminders"], 1):
-            reminder_list += f"{i}. {reminder['message']} (created: {reminder['created']})\n"
+        elif "post" in request.lower():
+            if "bible" in request.lower() or "verse" in request.lower():
+                result = self.execute_capability("x_integration", {"action": "post_bible_verse"})
+            else:
+                # Extract post content
+                post_text = self._extract_post_text(request)
+                result = self.execute_capability("x_integration", {
+                    "action": "post",
+                    "text": post_text
+                })
+            return result.message
         
-        return reminder_list
+        else:
+            return "I can help you get X trends or post tweets. Try 'X trends' or 'post to X: your message'."
     
-    def create_calendar_event_basic(self, title, date, time, description=""):
-        """Create and store calendar events in memory"""
-        try:
-            event = {
-                "title": title,
-                "date": date,
-                "time": time,
-                "description": description,
-                "created": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "id": f"event_{len(self.memory.get('events', []))}"
-            }
-            
-            if "events" not in self.memory:
-                self.memory["events"] = []
-            self.memory["events"].append(event)
-            
-            return f"📅 Calendar event created: '{title}' on {date} at {time}"
-            
-        except Exception as e:
-            return f"❌ Calendar error: {str(e)}"
-    
-    def list_events(self):
-        """Show all stored events"""
-        if "events" not in self.memory or not self.memory["events"]:
-            return "📅 No events scheduled."
-        
-        event_list = "📅 Your upcoming events:\n"
-        for event in self.memory["events"]:
-            event_list += f"• {event['title']} - {event['date']} at {event['time']}\n"
-            if event['description']:
-                event_list += f"  Description: {event['description']}\n"
-        
-        return event_list
-    
-    def send_email_real(self, to_email, subject, message):
-        """Send real emails using Gmail SMTP"""
-        if not self.services_status.get("Email", False):
-            return "❌ Email service not configured. Please add Gmail credentials to .env file."
-        
-        try:
-            gmail_email = os.getenv("GMAIL_EMAIL")
-            gmail_password = os.getenv("GMAIL_APP_PASSWORD")
-            
-            msg = MIMEMultipart()
-            msg['From'] = gmail_email
-            msg['To'] = to_email
-            msg['Subject'] = subject
-            
-            body = f"""
-Hello!
-
-Your AI assistant ({self.name}) sent you this message:
-
-{message}
-
----
-Sent by your Personal AI Assistant
-Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-            """.strip()
-            
-            msg.attach(MIMEText(body, 'plain'))
-            
-            print(f"📧 Sending email to {to_email}...")
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(gmail_email, gmail_password)
-            
-            text = msg.as_string()
-            server.sendmail(gmail_email, to_email, text)
-            server.quit()
-            
-            self._store_sent_email(to_email, subject, message)
-            
-            return f"✅ Email sent successfully to {to_email}!"
-            
-        except smtplib.SMTPAuthenticationError:
-            return "❌ Email authentication failed. Check your Gmail credentials and app password."
-        except smtplib.SMTPException as e:
-            return f"❌ Email sending failed: {str(e)}"
-        except Exception as e:
-            return f"❌ Unexpected email error: {str(e)}"
-    
-    def _store_sent_email(self, to_email, subject, message):
-        """Store sent email information in memory"""
-        email_record = {
-            "to": to_email,
-            "subject": subject,
-            "message": message,
-            "sent_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        if "sent_emails" not in self.memory:
-            self.memory["sent_emails"] = []
-        self.memory["sent_emails"].append(email_record)
-    
-    def show_help(self):
-        """Show what the agent can do"""
-        help_text = f"""
-🤖 Hi! I'm {self.name}, your AI assistant. Here's what I can help you with:
-
-🌤️  **Weather**: 
-   • "What's the weather in Paris?"
-   • "Check weather for Tokyo"
-
-📝 **Reminders**: 
-   • "Remind me to call mom tomorrow"
-   • "Create a reminder to buy groceries"
-   • "Show my reminders"
-
-📅 **Calendar**: 
-   • "Schedule a meeting tomorrow at 2 PM"
-   • "Create event: Team lunch on Friday at noon"
-   • "Show my events"
-
-📧 **Email**: 
-   • "Send email to friend@example.com"
-   • (Requires Gmail configuration)
-
-💬 **General Questions**: 
-   • Ask me anything! I can help with information, explanations, and advice.
-
-🔧 **System**: 
-   • "Check services" - See which features are available
-   • "Help" - Show this message
-
-Just tell me what you need in natural language - I'll understand!
-        """.strip()
-        
-        return help_text
-    
-    def extract_city(self, text):
-        """Extract city name from user input"""
+    def _extract_city(self, text: str) -> str:
+        """Extract city name from text"""
+        # Simple city extraction - in a real implementation, use NLP
         words = text.split()
         
-        # Look for common patterns like "in Paris" or "for Tokyo"
+        # Look for "in [city]" pattern
         for i, word in enumerate(words):
-            if word.lower() in ['in', 'for', 'at'] and i + 1 < len(words):
+            if word.lower() == "in" and i + 1 < len(words):
                 return words[i + 1].title()
         
-        # Look for capitalized words (likely city names)
-        for word in words:
-            if word.istitle() and len(word) > 2:
-                return word
-        
-        return None
+        # Default city
+        return os.getenv("DEFAULT_CITY", "New York")
     
-    def extract_reminder_message(self, text):
-        """Extract the reminder message from user input"""
-        message = text.lower()
-        for phrase in ['remind me to', 'reminder to', 'remember to', 'remind me', 'create a reminder']:
-            message = message.replace(phrase, '')
+    def _extract_event_title(self, text: str) -> str:
+        """Extract event title from text"""
+        # Simple extraction - look for text after "schedule" or "create"
+        text = text.lower()
         
-        return message.strip().capitalize()
+        for trigger in ["schedule", "create", "add"]:
+            if trigger in text:
+                parts = text.split(trigger, 1)
+                if len(parts) > 1:
+                    return parts[1].strip().title()
+        
+        return "New Event"
     
-    def extract_event_details(self, text):
-        """Extract event details from user input (simplified)"""
-        title = "Meeting"  # Default title
-        date = "Tomorrow"  # Default date
-        time = "10:00 AM"  # Default time
-        
-        # Look for time patterns
-        words = text.split()
-        for i, word in enumerate(words):
-            if any(time_word in word.lower() for time_word in ['am', 'pm', ':']):
-                if i > 0:
-                    time = f"{words[i-1]} {word}"
-                else:
-                    time = word
-                break
-        
-        # Look for date patterns
-        for word in words:
-            if word.lower() in ['today', 'tomorrow', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']:
-                date = word.title()
-                break
-        
-        return title, date, time
-    
-    def get_service_status(self):
-        """Return detailed service status information"""
-        status_report = "🔧 Service Status Report:\n\n"
-        
-        for service, available in self.services_status.items():
-            if available:
-                status_report += f"✅ {service}: Ready and configured\n"
-            else:
-                status_report += f"❌ {service}: Not configured\n"
-                
-                if service == "AI":
-                    status_report += "   → Add OPENAI_API_KEY to .env file\n"
-                elif service == "Weather":
-                    status_report += "   → Add WEATHER_API_KEY to .env file\n"
-                elif service == "Email":
-                    status_report += "   → Add GMAIL_EMAIL and GMAIL_APP_PASSWORD to .env file\n"
-        
-        return status_report
-    
-    def process_request(self, user_request):
-        """Main request processing logic"""
-        request_lower = user_request.lower()
-        
-        # Help requests
-        if any(word in request_lower for word in ['help', 'what can you do', 'commands']):
-            return self.show_help()
-        
-        # Service status requests
-        elif any(word in request_lower for word in ['check services', 'service status', 'status']):
-            return self.get_service_status()
-        
-        # Weather requests
-        elif any(word in request_lower for word in ['weather', 'temperature', 'forecast', 'rain', 'sunny']):
-            city = self.extract_city(user_request)
-            if not city:
-                return "🌤️  Which city would you like weather information for?"
-            
-            # Use real weather if available, otherwise basic version
-            if self.services_status.get("Weather", False):
-                return self.check_weather_real(city)
-            else:
-                return self.check_weather_basic(city) + "\n\n💡 Add WEATHER_API_KEY for real weather data!"
-        
-        # Reminder requests
-        elif any(word in request_lower for word in ['remind', 'reminder', 'remember']):
-            if 'show' in request_lower or 'list' in request_lower:
-                return self.list_reminders()
-            else:
-                message = self.extract_reminder_message(user_request)
-                return self.create_reminder_basic(message)
-        
-        # Calendar requests
-        elif any(word in request_lower for word in ['calendar', 'schedule', 'meeting', 'appointment', 'event']):
-            if 'show' in request_lower or 'list' in request_lower:
-                return self.list_events()
-            else:
-                title, date, time = self.extract_event_details(user_request)
-                return self.create_calendar_event_basic(title, date, time)
-        
-        # Email requests
-        elif any(word in request_lower for word in ['email', 'send', 'mail']):
-            if self.services_status.get("Email", False):
-                return "📧 Email feature available! Please specify: recipient, subject, and message"
-            else:
-                return "📧 Email service not configured. Please add Gmail credentials to .env file."
-        
-        # General AI questions
-        else:
-            return self.think(user_request)
-    
-    def sanitize_input(self, user_input):
-        """Clean and validate user input for security"""
-        dangerous_chars = ['<', '>', '&', '"', "'", '`']
-        cleaned_input = user_input
-        
-        for char in dangerous_chars:
-            cleaned_input = cleaned_input.replace(char, '')
-        
-        if len(cleaned_input) > 1000:
-            cleaned_input = cleaned_input[:1000] + "..."
-        
-        return cleaned_input.strip()
-    
-    def is_safe_request(self, user_request):
-        """Check if the user request is safe to process"""
-        harmful_patterns = [
-            'delete', 'remove', 'destroy', 'hack', 'exploit',
-            'password', 'secret', 'private', 'confidential'
+    def _extract_reminder_text(self, text: str) -> str:
+        """Extract reminder text"""
+        # Look for text after "remind me to" or similar patterns
+        patterns = [
+            r"remind me to (.+)",
+            r"reminder to (.+)",
+            r"remember to (.+)"
         ]
         
-        request_lower = user_request.lower()
-        for pattern in harmful_patterns:
-            if pattern in request_lower:
-                return False, f"Request contains potentially harmful content: '{pattern}'"
+        for pattern in patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                return match.group(1).strip()
         
-        return True, "Request is safe"
+        return "General reminder"
+    
+    def _extract_post_text(self, text: str) -> str:
+        """Extract post text from request"""
+        # Look for text after "post:" or similar
+        patterns = [
+            r"post to x[:\s]+(.+)",
+            r"tweet[:\s]+(.+)",
+            r"post[:\s]+(.+)"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                return match.group(1).strip()
+        
+        return "Hello from AI Agent!"
     
     def chat(self):
-        """Enhanced chat interface"""
-        print(f"\n💬 Chat with {self.name} (type 'quit' to exit)")
-        print("=" * 50)
-        print("Try asking about weather, reminders, emails, or general questions!")
-        print("Type 'help' to see all available commands.")
-        print("=" * 50)
-        
-        conversation_count = 0
+        """Interactive chat interface"""
+        print("\n💬 Chat with me! (Type 'quit' to exit)")
+        print("Try asking about weather, scheduling events, sending emails, or X trends!")
+        print("-" * 60)
         
         while True:
             try:
-                user_input = input(f"\n[{conversation_count + 1}] You: ").strip()
+                user_input = input("\nYou: ").strip()
                 
-                if user_input.lower() in ['quit', 'exit', 'bye', 'goodbye']:
-                    print(f"\n{self.name}: Goodbye! It was great chatting with you! 👋")
-                    print(f"We had {conversation_count} conversations. Come back anytime!")
+                if user_input.lower() in ['quit', 'exit', 'bye']:
+                    print(f"\n👋 Goodbye! Thanks for chatting with {self.name}!")
                     break
                 
                 if not user_input:
-                    print(f"{self.name}: I didn't catch that. Could you please say something?")
                     continue
                 
-                clean_input = self.sanitize_input(user_input)
+                # Create a message and process it
+                from strands_agents import AgentMessage
+                message = AgentMessage(
+                    sender="User",
+                    recipient=self.name,
+                    content=user_input
+                )
                 
-                is_safe, safety_message = self.is_safe_request(clean_input)
-                if not is_safe:
-                    print(f"{self.name}: ⚠️  {safety_message}")
-                    continue
-                
-                print(f"{self.name}: ", end="", flush=True)
-                response = self.process_request(clean_input)
-                print(response)
-                
-                conversation_count += 1
-                
-                if conversation_count % 5 == 0:
-                    print(f"\n💡 Tip: Type 'help' to see everything I can do!")
+                response = self.process_message(message)
+                print(f"\n{self.name}: {response}")
                 
             except KeyboardInterrupt:
-                print(f"\n\n{self.name}: Interrupted! Goodbye! 👋")
+                print(f"\n\n👋 Goodbye! Thanks for chatting with {self.name}!")
                 break
             except Exception as e:
-                print(f"\n{self.name}: ❌ Sorry, something went wrong: {str(e)}")
-                print("Let's try again!")
-    
-    def start_agent(self):
-        """Start the agent with a welcome message"""
-        print("🚀 Starting your Intelligent AI Assistant...")
-        print("=" * 60)
-        print(f"Agent Name: {self.name}")
-        print(f"Status: Ready to help!")
-        print("=" * 60)
-        
-        self._check_services()
-        self.chat()
-
+                print(f"\n❌ Error: {str(e)}")
 
 def main():
-    """Main function to create and start the intelligent agent"""
-    print("🤖 Intelligent AI Agent - Basic Version")
-    print("=" * 50)
+    """Main function to run the basic agent"""
+    print("🚀 Starting Personal AI Agent with Strands Agents SDK...")
     
-    # Create your agent
-    agent = IntelligentAgent("Buddy")
+    # Create and run the agent
+    agent = PersonalAIAgent("Buddy")
     
-    # Start the agent
-    agent.start_agent()
-
+    # Start interactive chat
+    agent.chat()
 
 if __name__ == "__main__":
     main()
