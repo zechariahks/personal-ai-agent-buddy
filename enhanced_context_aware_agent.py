@@ -484,7 +484,7 @@ def main():
                 if not user_input:
                     continue
                 
-                print(f"Agent: ", end="")
+                print(f"Buddy: ", end="")
                 result = agent.process_request(user_input)
                 print(result)
                 

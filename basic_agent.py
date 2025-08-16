@@ -437,7 +437,16 @@ Just tell me what you need in natural language - I'll understand!
         # Email requests
         elif any(word in request_lower for word in ['email', 'send', 'mail']):
             if self.services_status.get("Email", False):
-                return "📧 Email feature available! Please specify: recipient, subject, and message"
+                # Extract email details
+                match = re.search(r'to (.+?) with subject (.+?) and message (.+)', user_request, re.IGNORECASE)
+                if match:
+                    to_email = match.group(1).strip()
+                    subject = match.group(2).strip()
+                    message = match.group(3).strip()
+                    
+                    return self.send_email_real(to_email, subject, message)
+                else:
+                    return "📧 Please provide the email in the format: 'Send email to [email] with subject [subject] and message [message]'."
             else:
                 return "📧 Email service not configured. Please add Gmail credentials to .env file."
         
