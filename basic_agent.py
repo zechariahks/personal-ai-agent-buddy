@@ -334,7 +334,7 @@ Just tell me what you need in natural language - I'll understand!
         # Look for common patterns like "in Paris" or "for Tokyo"
         for i, word in enumerate(words):
             if word.lower() in ['in', 'for', 'at'] and i + 1 < len(words):
-                return words[i + 1].title()
+                return words[i + 1].title().strip("?")
         
         # Look for capitalized words (likely city names)
         for word in words:
