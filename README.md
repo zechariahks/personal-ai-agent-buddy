@@ -36,7 +36,7 @@ A complete implementation of an intelligent AI agent that can interact with real
 
 ### 1. Clone and Setup
 ```bash
-git clone https://github.com/zechariahks/personal-ai-assistant-buddy.git
+git clone https://github.com/zechariahks/personal-ai-agent-buddy.git
 cd personal-ai-agent-buddy
 python3 run.py setup
 ```
